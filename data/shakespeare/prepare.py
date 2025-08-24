@@ -16,8 +16,8 @@ n = len(data)
 train_data = data[:int(n*0.9)]
 val_data = data[int(n*0.9):]
 
-# encode with tiktoken gpt2 bpe
-enc = tiktoken.get_encoding("gpt2")
+# encode with tiktoken gpt-2 bpe
+enc = tiktoken.encoding_for_model("gpt2")
 train_ids = enc.encode_ordinary(train_data)
 val_ids = enc.encode_ordinary(val_data)
 print(f"train has {len(train_ids):,} tokens")

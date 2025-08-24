@@ -30,25 +30,33 @@ class LayerNorm(nn.Module):
 
     def __init__(self, dims: int, eps: float = 1e-5, affine: bool = True, bias: bool = False):
         super().__init__()
-        if affine:
-            self.bias = bias
-            if bias:
-                self.bias = mx.zeros((dims,))
-            self.weight = mx.ones((dims,))
         self.eps = eps
         self.dims = dims
+        self.use_bias = bias
+        
+        if affine:
+            self.weight = mx.ones((dims,))
+            if bias:
+                self.bias = mx.zeros((dims,))
+        else:
+            self.weight = None
+            self.bias = None
 
     def _extra_repr(self):
-        return f"{self.dims}, eps={self.eps}, affine={'weight' in self}, bias={self.bias}"
+        return f"{self.dims}, eps={self.eps}, affine={'weight' in self}, bias={self.use_bias}"
 
     def __call__(self, x):
         means = mx.mean(x, axis=-1, keepdims=True)
         var = mx.var(x, axis=-1, keepdims=True)
         x = (x - means) * mx.rsqrt(var + self.eps)
-        if self.bias:
-            return (self.weight * x + self.bias) if "weight" in self else x
-        else:
-            return (self.weight * x) if "weight" in self else x
+        
+        if self.weight is not None:
+            x = self.weight * x
+            
+        if self.use_bias and hasattr(self, 'bias'):
+            x = x + self.bias
+            
+        return x
 
 
 class CausalSelfAttention(nn.Module):
@@ -252,8 +260,8 @@ class GPT(nn.Module):
         the sequence max_new_tokens times, feeding the predictions back into the model each time.
         Most likely you'll want to make sure to be in model.eval() mode of operation for this.
         """
-        # Initialize the initial sequence context (idx)
-        idx = mx.zeros((1, 1), dtype=mx.int64)
+        # Use the provided initial sequence context (idx) - don't override it!
+        # idx should already be properly shaped as (batch_size, sequence_length)
         
         for _ in range(max_new_tokens):
             # if the sequence context is growing too long we must crop it at block_size
@@ -269,22 +277,12 @@ class GPT(nn.Module):
             # optionally crop the logits to only the top k options
             if top_k is not None:
                 v, _ = custom_topk(logits, min(top_k, logits.shape[-1]))
-
-                v_shape = v.shape
-
-                # Compute the index of the last element along the second dimension of v
-                last_index = v_shape[1] - 1
-
-                # Use MLX.take to extract the last element along the second dimension of v
-                last_element = mx.take(v, mx.array([last_index]))
-
-                # Expand the last element to match the shape of logits for broadcasting
-                v_last_expanded = mx.expand_dims(last_element, axis=1)
-
-                # Replace values with -1e9 where mask is True
-                mask = logits < v_last_expanded
-                inf_tensor = mx.ones_like(logits) * float('-1e9')
-                logits = (mask * logits) + ((1 - mask) * inf_tensor)
+                
+                # Get the k-th largest value (the cutoff threshold)
+                if v.size > 0:
+                    cutoff = v[0, -1]  # Last value in top-k (smallest of the top-k)
+                    # Set all values below cutoff to -inf
+                    logits = mx.where(logits < cutoff, float('-inf'), logits)
 
             # apply softmax to convert logits to (normalized) probabilities
             probs = mx.softmax(logits)

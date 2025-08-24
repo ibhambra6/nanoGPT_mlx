@@ -9,9 +9,9 @@ context_size = 256 # context of up to 256 previous characters
 warmup_pct = 0.4
 learning_rate = 2e-3 # with baby networks can afford to go a bit higher
 min_lr = 2e-4
-num_iters = 5000
+num_iters = 500
 warmup_iters = 100
-lr_decay_iters = 5000
+lr_decay_iters = 500
 min_lr = 1e-4 # learning_rate / 10 usually
 beta2 = 0.99 # make a bit bigger because number of tokens per iter is small
 
