@@ -59,10 +59,113 @@ Then, train a 124M GPT-2 model on your MAC GPU:
 python train.py configs/train_gpt2_owt.py
 ```
 
+## benchmarking & evaluation
+
+This project includes a comprehensive benchmarking system to evaluate and compare different models you train. The system evaluates models on perplexity, instruction following, and inference speed.
+
+### Quick Start
+
+```bash
+# Create evaluation datasets (run once)
+python eval/create_eval_sets.py
+
+# Run full benchmark on a trained model
+python scripts/run_eval.py benchmark --model_dir out/ --model_name baseline
+
+# View benchmark history
+python scripts/run_eval.py compare
+```
+
+### Evaluation Components
+
+The benchmarking system includes three main evaluation components:
+
+1. **Perplexity Evaluation** - Measures how well the model predicts held-out text
+2. **Instruction Following** - Tests ability to follow Shakespeare-style instructions  
+3. **Inference Speed** - Measures tokens generated per second
+
+### Individual Evaluations
+
+Run individual evaluations with these commands:
+
+```bash
+# Perplexity evaluation only
+python scripts/run_eval.py ppl --model_dir out/ --ctx 512
+
+# Instruction following evaluation only  
+python scripts/run_eval.py instruct --model_dir out/ --max_examples 20
+
+# Full benchmark suite
+python scripts/run_eval.py benchmark --model_dir out/ --model_name my_model
+```
+
+### Benchmark Results
+
+All benchmark results are logged to `reports/bench.csv` with the following metrics:
+
+- **Perplexity** - Lower is better (measures prediction accuracy)
+- **Instruction Quality** - 0-1 scale, higher is better (measures instruction following)
+- **Tokens/sec** - Higher is better (measures inference speed)
+- **Model size** - Parameters in millions
+- **Context lengths** - Training and evaluation context sizes
+
+### Example Workflow
+
+1. Train a baseline model:
+   ```bash
+   python train.py configs/train_gpt2_shakespeare.py
+   ```
+
+2. Benchmark the baseline:
+   ```bash
+   python scripts/run_eval.py benchmark --model_dir gpt2_shakespeare_pretrain --model_name baseline
+   ```
+
+3. Make improvements (e.g., add RoPE, change architecture)
+
+4. Train the improved model and benchmark again:
+   ```bash
+   python scripts/run_eval.py benchmark --model_dir gpt2_shakespeare_improved --model_name with_rope
+   ```
+
+5. Compare results:
+   ```bash
+   python scripts/run_eval.py compare
+   ```
+
+### Evaluation Datasets
+
+The system uses two evaluation datasets:
+
+- **Shakespeare Evaluation Text** (`eval/eval_text/`) - 34k tokens of held-out Shakespeare text for perplexity measurement
+- **Instruction Dataset** (`eval/eval_instruct.jsonl`) - 20 Shakespeare-style instruction-following tasks
+
+### Advanced Usage
+
+For more control, use the individual evaluation scripts directly:
+
+```bash
+# Detailed perplexity evaluation with custom parameters
+python scripts/eval_ppl_mlx.py --model_dir out/ --ctx 1024 --output_file results.json
+
+# Instruction evaluation with custom generation settings
+python scripts/eval_instruct_mlx.py --model_dir out/ --temperature 0.7 --max_new_tokens 200
+
+# Custom benchmark with specific settings
+python scripts/benchmark_report.py --model_dir out/ --model_name experiment_1 --notes "Testing new optimizer"
+```
+
+See individual script help for all options:
+```bash
+python scripts/eval_ppl_mlx.py --help
+python scripts/eval_instruct_mlx.py --help  
+python scripts/benchmark_report.py --help
+```
+
 ## todos
 - [ ] disable weight decay on non-decay params in optimizer
 - [ ] add bfloat16 training support
-- [ ] integrate Eleuther Eval
+- [x] integrate evaluation harness (comprehensive benchmarking system)
 - [ ] add checkpoint conversion for loading pre-trained HF models 
 - [x] add saveing and loading pre-trained MLX models 
 - [ ] enable finetuning models from pre-trained checkpoints

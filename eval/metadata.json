@@ -1,0 +1,15 @@
+{
+  "eval_text": {
+    "path": "eval/eval_text/shakespeare_eval.txt",
+    "binary_path": "eval/eval_text/shakespeare_eval.bin",
+    "num_tokens": 34279,
+    "description": "Held-out Shakespeare text for perplexity evaluation"
+  },
+  "eval_instruct": {
+    "path": "eval/eval_instruct.jsonl",
+    "num_examples": 20,
+    "description": "Shakespeare-style instruction following evaluation set"
+  },
+  "created_by": "create_eval_sets.py",
+  "tokenizer": "tiktoken gpt2"
+}

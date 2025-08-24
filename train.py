@@ -12,7 +12,7 @@ import mlx.nn as nn
 import mlx.optimizers as optim
 from mlx.utils import tree_flatten, tree_map
 
-from model import GPTConfig, GPT
+from models.base_model import GPTConfig, GPT
 from optimizer import AdamW
 from tboard_utils import init_tensorboard, get_tensorboard
 

@@ -7,7 +7,7 @@ import json
 import mlx.core as mx
 from mlx.utils import tree_unflatten, tree_flatten
 
-from model import GPT, GPTConfig
+from models.base_model import GPT, GPTConfig
 
 
 # -----------------------------------------------------------------------------

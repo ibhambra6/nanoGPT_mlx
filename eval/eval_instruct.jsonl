@@ -1,0 +1,20 @@
+{"instruction": "Write a soliloquy about love in the style of Shakespeare.", "input": "", "expected_style": "shakespearean", "category": "creative_writing"}
+{"instruction": "Complete this line in iambic pentameter: 'To be or not to be'", "input": "To be or not to be", "expected_style": "iambic_pentameter", "category": "poetry"}
+{"instruction": "Explain what a soliloquy is using Elizabethan language.", "input": "", "expected_style": "explanatory", "category": "explanation"}
+{"instruction": "Write a dialogue between two characters discussing honor.", "input": "", "expected_style": "dialogue", "category": "dialogue"}
+{"instruction": "Describe a castle using flowery, poetic language.", "input": "", "expected_style": "descriptive", "category": "description"}
+{"instruction": "Continue this famous quote: 'All the world's a stage'", "input": "All the world's a stage", "expected_style": "continuation", "category": "completion"}
+{"instruction": "Write a brief tragic monologue about betrayal.", "input": "", "expected_style": "tragic", "category": "monologue"}
+{"instruction": "Compose a rhyming couplet about time passing.", "input": "", "expected_style": "rhyming_couplet", "category": "poetry"}
+{"instruction": "Rewrite this in Shakespearean language: 'I am very sad today'", "input": "I am very sad today", "expected_style": "translation", "category": "translation"}
+{"instruction": "Write a short speech about courage suitable for a king.", "input": "", "expected_style": "royal_speech", "category": "speech"}
+{"instruction": "Create a metaphor comparing life to a journey.", "input": "", "expected_style": "metaphorical", "category": "metaphor"}
+{"instruction": "Write the opening lines of a play set in a medieval court.", "input": "", "expected_style": "dramatic_opening", "category": "drama"}
+{"instruction": "Compose a sonnet about the changing seasons.", "input": "", "expected_style": "sonnet", "category": "poetry"}
+{"instruction": "Write a character's dying words that are both noble and sad.", "input": "", "expected_style": "dying_words", "category": "dramatic"}
+{"instruction": "Create a conversation between a wise fool and a king.", "input": "", "expected_style": "wise_fool", "category": "dialogue"}
+{"instruction": "Write a proclamation announcing a royal wedding.", "input": "", "expected_style": "proclamation", "category": "formal"}
+{"instruction": "Describe a fierce battle using vivid imagery.", "input": "", "expected_style": "battle_description", "category": "action"}
+{"instruction": "Write a love letter in the style of Romeo to Juliet.", "input": "", "expected_style": "love_letter", "category": "romantic"}
+{"instruction": "Create a curse or spell spoken by a witch.", "input": "", "expected_style": "mystical", "category": "supernatural"}
+{"instruction": "Write the final lines of a tragedy where justice is served.", "input": "", "expected_style": "tragic_resolution", "category": "resolution"}
