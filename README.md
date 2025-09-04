@@ -6,6 +6,20 @@ Train OpenAI's GPT-2 models or custom GPT-style models from scratch, all on your
 
 Still under active development, but currently the file `train.py` closely resembles the nanoGPT codebase.
 
+## project purpose
+
+This repository exists to systematically compare architectural improvements to GPT-style models by training multiple variants and benchmarking them side‑by‑side. The focus is on modifying the model architecture (e.g., Flash Attention, RMSNorm, RoPE, SwiGLU, Residual Matrix Transformer, etc.) and observing the downstream effects on perplexity, instruction following, and inference speed on the same evaluation set (Shakespeare).
+
+The codebase includes a small, opinionated evaluation/benchmark harness to make A/B comparisons fast and repeatable on a single machine. Configs under `configs/` make it easy to toggle architectures and hyperparameters for consistent experiments.
+
+## hardware & framework
+
+All testing and training in this project has been performed locally on an Apple MacBook Air with an M2 chip and 8 GB of unified memory, using Apple’s MLX framework. The implementation choices, default configs, and the provided evaluation loops are tuned for this environment (e.g., moderate context lengths, modest batch sizes, flash-attention kernels). Results will scale with stronger hardware, but the repo is optimized for lightweight, reproducible experiments on Mac laptops.
+
+## long-term aim
+
+The end goal is to assemble a compact, modern GPT architecture—borrowing ingredients from the latest OpenAI models (e.g., attention optimizations, improved normalization, rotary/relative positions, modern MLP activations)—but at a much smaller scale suitable for local training. The intent is not to match the capabilities or scale of proprietary frontier models, but to replicate the architectural “shape” and training ergonomics in a small, open, and fast-to-iterate package that runs entirely on a laptop with limited iterations.
+
 ## install
 
 Create a conda environment using the provided
