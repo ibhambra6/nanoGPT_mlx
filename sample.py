@@ -7,7 +7,7 @@ import json
 import mlx.core as mx
 from mlx.utils import tree_unflatten, tree_flatten
 
-from models.base_model import GPT, GPTConfig
+from models import make_model_from_config, load_model_from_files
 
 
 # -----------------------------------------------------------------------------
@@ -31,12 +31,7 @@ if init_from == 'resume':
     with open(model_config_path, "r") as f:
         config_args = json.load(f)
 
-    config = GPTConfig(**config_args)
-    model = GPT(config)
-
-    weights = mx.load(model_weights_path)
-    model.update(tree_unflatten(list(weights.items())))
-    mx.eval(model.parameters())
+    model, arch = load_model_from_files(model_weights_path, model_config_path)
 
     nparams = sum(x.size for k, x in tree_flatten(model.parameters()))
     print(f"Loaded GPT-2 with {nparams / 1e6:.3f} M parameters")
@@ -73,8 +68,7 @@ elif init_from.startswith('gpt2'):
     elif init_from == 'gpt2-xl':
         config_args.update(dict(n_layer=48, n_head=25, n_embd=1600))
     
-    config = GPTConfig(**config_args)
-    model = GPT(config)
+    model, arch = make_model_from_config(config_args)
     
     # For now, we'll use random weights. In a full implementation, you would:
     # 1. Download the OpenAI GPT-2 checkpoint
@@ -84,7 +78,7 @@ elif init_from.startswith('gpt2'):
     
     mx.eval(model.parameters())
     nparams = sum(x.size for k, x in tree_flatten(model.parameters()))
-    print(f"Loaded {init_from} with {nparams / 1e6:.3f} M parameters")
+    print(f"Loaded {init_from} ({arch}) with {nparams / 1e6:.3f} M parameters")
 
 # ok let's assume gpt-2 encodings by default
 enc = tiktoken.get_encoding("gpt2")

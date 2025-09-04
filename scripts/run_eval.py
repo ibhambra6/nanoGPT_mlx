@@ -47,8 +47,12 @@ def run_perplexity_eval(args):
     if args.ctx:
         cmd.extend(["--ctx", str(args.ctx)])
     
-    if args.eval_data:
-        cmd.extend(["--eval_data", args.eval_data])
+    # Default to Shakespeare eval data if not provided
+    cmd.extend(["--eval_data", args.eval_data or "eval/eval_text/shakespeare_eval.bin"])
+
+    # Quick mode: fewer batches for speed
+    if getattr(args, 'quick', False):
+        cmd.extend(["--max_batches", str(args.quick_batches or 50)])
     
     if args.output_file:
         cmd.extend(["--output_file", args.output_file])
@@ -101,6 +105,13 @@ def run_benchmark(args):
     
     if args.ctx:
         cmd.extend(["--ctx_eval", str(args.ctx)])
+
+    # Quick mode: only run ppl with fewer batches; skip instruct/speed
+    if getattr(args, 'quick', False):
+        cmd.append("--ppl_only")
+        cmd.extend(["--ppl_max_batches", str(args.quick_batches or 50)])
+        cmd.append("--no_instruct")
+        cmd.append("--no_speed")
     
     if args.run_full:
         cmd.append("--run_full_benchmark")
@@ -138,9 +149,13 @@ def main():
     ppl_parser.add_argument('--ctx', type=int, default=512,
                            help='Context length for evaluation')
     ppl_parser.add_argument('--eval_data', type=str,
-                           help='Path to evaluation data')
+                           help='Path to evaluation data (defaults to Shakespeare eval)')
     ppl_parser.add_argument('--output_file', type=str,
                            help='Output file for results')
+    ppl_parser.add_argument('--quick', action='store_true',
+                           help='Quick mode: limit batches for faster run')
+    ppl_parser.add_argument('--quick_batches', type=int, default=50,
+                           help='Max batches in quick mode (default: 50)')
     
     # Instruction evaluation command
     instruct_parser = subparsers.add_parser('instruct', help='Run instruction evaluation')
@@ -167,6 +182,10 @@ def main():
                                  help='Notes about this run')
     benchmark_parser.add_argument('--ctx', type=int, default=512,
                                  help='Context length for evaluation')
+    benchmark_parser.add_argument('--quick', action='store_true',
+                                  help='Quick mode: ppl only with fewer batches')
+    benchmark_parser.add_argument('--quick_batches', type=int, default=50,
+                                  help='Max batches in quick mode (default: 50)')
     
     # Benchmark type selection
     bench_group = benchmark_parser.add_mutually_exclusive_group()

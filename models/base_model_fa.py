@@ -1,12 +1,11 @@
-import math
-
 import mlx.core as mx
 import mlx.nn as nn
+import mlx.core.fast as fast
 
 from dataclasses import dataclass
 from .components import LayerNorm, topk as components_topk
 
-import pdb
+ 
 
 
 class CausalSelfAttention(nn.Module):
@@ -64,15 +63,33 @@ class CausalSelfAttention(nn.Module):
             key = mx.concatenate([key_cache, key], axis=2)
             value = mx.concatenate([value_cache, value], axis=2)
 
-        # manual implementation of attention
-        att = (query @ key.transpose(0, 1, 3, 2)) * (1.0 / math.sqrt(key.shape[3]))
-        mask = mask.reshape(1, 1, T, T)
-        # Mask out future positions (set masked positions to -inf)
-        att = mx.where(mask[:, :, :T, :T] == 0, float('-inf'), att)
-        # y = att @ value # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
-        att = mx.softmax(att.astype(mx.float32), axis=-1).astype(att.dtype)
-        att = self.attn_dropout(att)
-        y = (att @ value).transpose(0, 2, 1, 3).reshape(B, T, C) # re-assemble all head outputs side by side
+        # Flash attention implementation using MLX's scaled_dot_product_attention
+        # Convert mask to the format expected by scaled_dot_product_attention
+        # MLX expects causal mask as additive mask (0 for allowed, -inf for masked)
+        current_seq_len = query.shape[2]  # T dimension
+        if cache is not None:
+            # When using cache, we need to handle the full sequence length
+            full_seq_len = key.shape[2]  # Full sequence length including cached tokens
+            causal_mask = mx.tril(mx.ones([current_seq_len, full_seq_len]))
+        else:
+            causal_mask = mx.tril(mx.ones([current_seq_len, current_seq_len]))
+        
+        # Convert to additive mask (0 for allowed, -inf for masked)
+        causal_mask = mx.where(causal_mask == 0, float('-inf'), 0.0)
+        
+        # Use MLX flash attention
+        # MLX scaled_dot_product_attention expects scale parameter and mask parameter
+        scale = 1.0 / (key.shape[-1] ** 0.5)  # 1/sqrt(head_dim)
+        y = fast.scaled_dot_product_attention(
+            query, 
+            key, 
+            value,
+            scale=scale,
+            mask=causal_mask
+        )
+        
+        # Re-assemble all head outputs side by side
+        y = y.transpose(0, 2, 1, 3).reshape(B, T, C)
 
         # output projection
         y = self.resid_dropout(self.c_proj(y))

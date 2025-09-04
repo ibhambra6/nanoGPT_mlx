@@ -13,19 +13,32 @@ import math
 import json
 import time
 import argparse
-from typing import Dict, List, Tuple, Optional
+from typing import Tuple, Optional, Any
 
 import mlx.core as mx
 import mlx.nn as nn
 import numpy as np
 import tiktoken
-from mlx.utils import tree_unflatten
 
 # Add parent directory to path to import model
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models.base_model import GPT, GPTConfig
+from models import load_model_from_files
+
+
+def load_model(model_path: str, config_path: str) -> Any:
+    """Load a model from checkpoint files.
+    
+    Args:
+        model_path: Path to model weights (.npz file)
+        config_path: Path to config file (.json file)
+    
+    Returns:
+        Loaded model instance
+    """
+    model, arch = load_model_from_files(model_path, config_path)
+    return model
 
 
 class EvalLoader:
@@ -108,7 +121,7 @@ def cross_entropy(logits: mx.array, targets: mx.array) -> mx.array:
     return -mx.mean(gathered_log_probs)
 
 
-def eval_ppl(model: GPT, loader: EvalLoader, ctx: int, max_batches: Optional[int] = None) -> float:
+def eval_ppl(model: Any, loader: EvalLoader, ctx: int, max_batches: Optional[int] = None) -> float:
     """Evaluate perplexity on a dataset.
     
     Args:
@@ -163,38 +176,7 @@ def eval_ppl(model: GPT, loader: EvalLoader, ctx: int, max_batches: Optional[int
     return perplexity
 
 
-def load_model(model_path: str, config_path: str) -> GPT:
-    """Load a trained MLX model.
-    
-    Args:
-        model_path: Path to model weights (.npz file)
-        config_path: Path to model config (.json file)
-        
-    Returns:
-        Loaded GPT model
-    """
-    # Load configuration
-    with open(config_path, 'r') as f:
-        config_dict = json.load(f)
-    
-    config = GPTConfig(**config_dict)
-    
-    # Create model
-    model = GPT(config)
-    
-    # Load weights
-    weights = mx.load(model_path)
-    model.update(tree_unflatten(list(weights.items())))
-    
-    # Evaluate parameters to ensure they're loaded
-    mx.eval(model.parameters())
-    
-    # Count parameters
-    from mlx.utils import tree_flatten
-    nparams = sum(x.size for k, x in tree_flatten(model.parameters()))
-    print(f"Loaded model with {nparams / 1e6:.2f}M parameters")
-    
-    return model
+ 
 
 
 def auto_detect_model_files(model_dir: str) -> Tuple[str, str]:
@@ -278,7 +260,10 @@ def main():
     
     # Load model
     print("Loading model...")
-    model = load_model(model_path, config_path)
+    model, arch = load_model_from_files(model_path, config_path)
+    from mlx.utils import tree_flatten
+    nparams = sum(x.size for k, x in tree_flatten(model.parameters()))
+    print(f"Loaded {arch} model with {nparams / 1e6:.2f}M parameters")
     
     # Load evaluation data
     print("Loading evaluation data...")
@@ -291,8 +276,8 @@ def main():
     
     # Print results
     print(f"\n{'='*50}")
-    print(f"PERPLEXITY EVALUATION RESULTS")
-    print(f"{'='*50}")
+    print("PERPLEXITY EVALUATION RESULTS")
+    print("=" * 50)
     print(f"Model: {model_path}")
     print(f"Evaluation data: {args.eval_data}")
     print(f"Context length: {args.ctx}")

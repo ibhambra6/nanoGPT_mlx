@@ -24,8 +24,8 @@ from mlx.utils import tree_flatten
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models.base_model import GPT, GPTConfig
-from scripts.eval_ppl_mlx import load_model, auto_detect_model_files
+from models import load_model_from_files
+from scripts.eval_ppl_mlx import auto_detect_model_files
 
 
 class BenchmarkReporter:
@@ -92,7 +92,7 @@ class BenchmarkReporter:
             Tuple of (param_count_millions, config_dict)
         """
         # Load model to count parameters
-        model = load_model(model_path, config_path)
+        model, _ = load_model_from_files(model_path, config_path)
         
         # Count parameters
         nparams = sum(x.size for k, x in tree_flatten(model.parameters()))
@@ -106,7 +106,8 @@ class BenchmarkReporter:
     
     def run_perplexity_evaluation(self, model_path: str, config_path: str,
                                  eval_data: str = "eval/eval_text/shakespeare_eval.bin",
-                                 ctx_eval: int = 512) -> Tuple[float, float]:
+                                 ctx_eval: int = 512,
+                                 max_batches: Optional[int] = None) -> Tuple[float, float]:
         """Run perplexity evaluation.
         
         Args:
@@ -124,12 +125,12 @@ class BenchmarkReporter:
         from scripts.eval_ppl_mlx import eval_ppl, EvalLoader
         
         # Load model and data
-        model = load_model(model_path, config_path)
+        model, _ = load_model_from_files(model_path, config_path)
         loader = EvalLoader(eval_data)
         
         # Run evaluation
         start_time = time.time()
-        perplexity = eval_ppl(model, loader, ctx_eval, max_batches=50)  # Limit for benchmarking
+        perplexity = eval_ppl(model, loader, ctx_eval, max_batches=max_batches)
         eval_time = time.time() - start_time
         
         return perplexity, eval_time
@@ -178,7 +179,7 @@ class BenchmarkReporter:
         print(f"Measuring inference speed ({num_tokens} tokens)...")
         
         # Load model
-        model = load_model(model_path, config_path)
+        model, _ = load_model_from_files(model_path, config_path)
         
         # Prepare input (random tokens)
         import tiktoken
@@ -215,7 +216,10 @@ class BenchmarkReporter:
     
     def run_full_benchmark(self, model_path: str, config_path: str,
                           model_name: str, commit_hash: Optional[str] = None,
-                          notes: str = "") -> Dict[str, Any]:
+                          notes: str = "",
+                          ppl_max_batches: Optional[int] = None,
+                          no_instruct: bool = False,
+                          no_speed: bool = False) -> Dict[str, Any]:
         """Run a full benchmark suite on a model.
         
         Args:
@@ -256,7 +260,7 @@ class BenchmarkReporter:
         try:
             # Run perplexity evaluation
             ppl, eval_time = self.run_perplexity_evaluation(
-                model_path, config_path, ctx_eval=ctx_eval
+                model_path, config_path, ctx_eval=ctx_eval, max_batches=ppl_max_batches
             )
             benchmark_results['ppl_eval'] = ppl
             benchmark_results['eval_time_sec'] = eval_time
@@ -266,23 +270,21 @@ class BenchmarkReporter:
             benchmark_results['ppl_eval'] = None
             benchmark_results['eval_time_sec'] = None
         
-        try:
-            # Run instruction evaluation  
-            instruct_quality = self.run_instruction_evaluation(model_path, config_path)
-            benchmark_results['instruct_quality'] = instruct_quality
-            
-        except Exception as e:
-            print(f"Instruction evaluation failed: {e}")
-            benchmark_results['instruct_quality'] = None
+        if not no_instruct:
+            try:
+                instruct_quality = self.run_instruction_evaluation(model_path, config_path)
+                benchmark_results['instruct_quality'] = instruct_quality
+            except Exception as e:
+                print(f"Instruction evaluation failed: {e}")
+                benchmark_results['instruct_quality'] = None
         
-        try:
-            # Measure inference speed
-            tok_per_sec = self.measure_inference_speed(model_path, config_path)
-            benchmark_results['tok_per_sec'] = tok_per_sec
-            
-        except Exception as e:
-            print(f"Speed measurement failed: {e}")
-            benchmark_results['tok_per_sec'] = None
+        if not no_speed:
+            try:
+                tok_per_sec = self.measure_inference_speed(model_path, config_path)
+                benchmark_results['tok_per_sec'] = tok_per_sec
+            except Exception as e:
+                print(f"Speed measurement failed: {e}")
+                benchmark_results['tok_per_sec'] = None
         
         # Log results to CSV
         self.log_benchmark_result(benchmark_results)
@@ -343,6 +345,82 @@ class BenchmarkReporter:
                 results.append(row)
         
         return results
+
+    def delete_rows_by_indices(self, indices: List[int]) -> int:
+        """Delete rows by 1-based indices (excluding header).
+
+        Args:
+            indices: List of row numbers to delete (1-based)
+
+        Returns:
+            Number of rows deleted
+        """
+        if not os.path.exists(self.bench_csv_path):
+            return 0
+
+        # Normalize and dedupe indices
+        to_delete = set(int(i) for i in indices)
+
+        with open(self.bench_csv_path, 'r', newline='') as f:
+            rows = list(csv.reader(f))
+        if not rows:
+            return 0
+
+        header, data = rows[0], rows[1:]
+
+        kept = []
+        deleted = 0
+        for i, row in enumerate(data, start=1):
+            if i in to_delete:
+                deleted += 1
+            else:
+                kept.append(row)
+
+        with open(self.bench_csv_path, 'w', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(header)
+            writer.writerows(kept)
+
+        return deleted
+
+    def delete_rows_by_filter(self, field: str, contains: str) -> int:
+        """Delete rows whose field contains the substring (case-insensitive).
+
+        Args:
+            field: Column name (e.g., 'model_name', 'commit', 'model_path', 'notes')
+            contains: Substring to match (case-insensitive)
+
+        Returns:
+            Number of rows deleted
+        """
+        if not os.path.exists(self.bench_csv_path):
+            return 0
+
+        contains_l = contains.lower()
+
+        with open(self.bench_csv_path, 'r', newline='') as f:
+            reader = csv.DictReader(f)
+            header = reader.fieldnames or []
+            data = list(reader)
+
+        if field not in header:
+            raise ValueError(f"Unknown field '{field}'. Available: {header}")
+
+        kept = []
+        deleted = 0
+        for row in data:
+            val = (row.get(field) or '')
+            if contains_l in str(val).lower():
+                deleted += 1
+            else:
+                kept.append(row)
+
+        with open(self.bench_csv_path, 'w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=header)
+            writer.writeheader()
+            writer.writerows(kept)
+
+        return deleted
     
     def print_benchmark_summary(self, results: Dict[str, Any]):
         """Print a formatted summary of benchmark results.
@@ -409,7 +487,20 @@ def main():
                        help='Directory for benchmark reports')
     parser.add_argument('--show_history', action='store_true',
                        help='Show historical benchmark results')
+    # Bench management
+    parser.add_argument('--delete_indices', nargs='+', type=int, default=None,
+                       help='Delete rows by 1-based indices (from bench.csv, excluding header)')
+    parser.add_argument('--delete_where', type=str, default=None,
+                       help='Delete rows where field contains substring. Format: field=substring')
     
+    # Additional CLI to tune for Shakespeare-only quick runs
+    parser.add_argument('--ppl_max_batches', type=int, default=None,
+                        help='Limit number of batches for perplexity eval')
+    parser.add_argument('--no_instruct', action='store_true',
+                        help='Skip instruction following evaluation')
+    parser.add_argument('--no_speed', action='store_true',
+                        help='Skip speed measurement')
+
     args = parser.parse_args()
     
     # Initialize reporter
@@ -427,6 +518,21 @@ def main():
                      f"({result['timestamp'][:10]})")
         else:
             print("No historical benchmark results found.")
+        return
+
+    # Delete rows by indices
+    if args.delete_indices:
+        deleted = reporter.delete_rows_by_indices(args.delete_indices)
+        print(f"Deleted {deleted} rows from {reporter.bench_csv_path}")
+        return
+
+    # Delete rows by filter
+    if args.delete_where:
+        if '=' not in args.delete_where:
+            raise SystemExit("--delete_where must be in format field=substring")
+        field, substring = args.delete_where.split('=', 1)
+        deleted = reporter.delete_rows_by_filter(field.strip(), substring.strip())
+        print(f"Deleted {deleted} rows from {reporter.bench_csv_path} where {field} contains '{substring}'")
         return
     
     # For non-history commands, model paths and name are required
@@ -455,7 +561,9 @@ def main():
         # Run full benchmark
         results = reporter.run_full_benchmark(
             model_path, config_path, args.model_name,
-            commit_hash=args.commit_hash, notes=args.notes
+            commit_hash=args.commit_hash, notes=args.notes,
+            ppl_max_batches=args.ppl_max_batches,
+            no_instruct=args.no_instruct, no_speed=args.no_speed,
         )
         reporter.print_benchmark_summary(results)
         
@@ -478,7 +586,7 @@ def main():
         
         if args.ppl_only:
             ppl, eval_time = reporter.run_perplexity_evaluation(
-                model_path, config_path, ctx_eval=args.ctx_eval
+                model_path, config_path, ctx_eval=args.ctx_eval, max_batches=args.ppl_max_batches
             )
             results.update({'ppl_eval': ppl, 'eval_time_sec': eval_time})
         

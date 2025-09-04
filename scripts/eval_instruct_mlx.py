@@ -11,24 +11,23 @@ import os
 import json
 import time
 import argparse
-from typing import Dict, List, Tuple, Any, Optional
+from typing import Dict, List, Any, Optional
 
 import mlx.core as mx
 import tiktoken
-from mlx.utils import tree_unflatten
 
 # Add parent directory to path to import model
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from models.base_model import GPT, GPTConfig
-from scripts.eval_ppl_mlx import load_model, auto_detect_model_files
+from models import load_model_from_files
+from scripts.eval_ppl_mlx import auto_detect_model_files
 
 
 class InstructionEvaluator:
     """Evaluates instruction following capability of models."""
     
-    def __init__(self, model: GPT, tokenizer_name: str = "gpt2"):
+    def __init__(self, model, tokenizer_name: str = "gpt2"):
         """Initialize instruction evaluator.
         
         Args:
@@ -73,14 +72,13 @@ class InstructionEvaluator:
         prompt_array = mx.array([prompt_tokens], dtype=mx.int64)
         
         # Generate response
-        self.model.eval()
-        with mx.no_grad():
-            generated = self.model.generate(
-                prompt_array, 
-                max_new_tokens=max_new_tokens,
-                temperature=temperature,
-                top_k=top_k
-            )
+        # Note: MLX doesn't require no_grad context like PyTorch
+        generated = self.model.generate(
+            prompt_array, 
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            top_k=top_k
+        )
         
         # Decode full sequence and extract response
         full_text = self.enc.decode(generated[0].tolist())
@@ -309,7 +307,7 @@ def evaluate_instructions(model_path: str, config_path: str,
     
     # Load model and dataset
     print("Loading model...")
-    model = load_model(model_path, config_path)
+    model, arch = load_model_from_files(model_path, config_path)
     
     print("Loading instruction dataset...")
     instructions = load_instruction_dataset(dataset_path)
@@ -476,8 +474,8 @@ def main():
     
     # Print summary results
     print(f"\n{'='*60}")
-    print(f"INSTRUCTION FOLLOWING EVALUATION RESULTS")
-    print(f"{'='*60}")
+    print("INSTRUCTION FOLLOWING EVALUATION RESULTS")
+    print("=" * 60)
     print(f"Model: {model_path}")
     print(f"Dataset: {args.eval_data}")
     print(f"Examples evaluated: {summary['total_examples']}")

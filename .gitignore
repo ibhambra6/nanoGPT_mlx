@@ -12,3 +12,5 @@ docs/
 .ruff_cache/
 .mypy_cache/
 gpt2*/
+out/
+trained_models/

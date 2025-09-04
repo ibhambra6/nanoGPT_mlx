@@ -52,8 +52,8 @@ def test_model_loading():
     print("\nTesting model loading functions...")
     
     try:
-        from scripts.eval_ppl_mlx import auto_detect_model_files, load_model
-        from models.base_model import GPT, GPTConfig
+        from scripts.eval_ppl_mlx import auto_detect_model_files
+        from models import load_model_from_files
         
         # Test with sample directory (should fail gracefully)
         try:

@@ -12,7 +12,7 @@ import mlx.nn as nn
 import mlx.optimizers as optim
 from mlx.utils import tree_flatten, tree_map
 
-from models.base_model import GPTConfig, GPT
+from models import make_model_from_config
 from optimizer import AdamW
 from tboard_utils import init_tensorboard, get_tensorboard
 
@@ -112,15 +112,29 @@ def log_tboard_dict(log_dict, itr, pre, post=''):
 
 def main():
     # model init
-    model_args = dict(n_layer=n_layer, n_head=n_head, n_embd=n_embd, block_size=context_size,
-                    bias=bias, vocab_size=None, dropout=dropout) # start with model_args from command line
+    model_args = dict(
+        n_layer=n_layer,
+        n_head=n_head,
+        n_embd=n_embd,
+        block_size=context_size,
+        bias=bias,
+        vocab_size=None,
+        dropout=dropout,
+    )
+
+    # Optional knobs (if defined in config file) for RoPE/RMT
+    for k in [
+        'use_rmt', 'Dk', 'Dv', 'rmt_dropout',
+        'rope_base', 'rope_scale',
+    ]:
+        if k in globals():
+            model_args[k] = globals()[k]
 
     # initialize model:
     if meta_vocab_size is None:
         print("defaulting to vocab_size of GPT-2 to 50304 (50257 rounded up for efficiency)")
     model_args['vocab_size'] = meta_vocab_size if meta_vocab_size is not None else 50304
-    gptconf = GPTConfig(**model_args)
-    model = GPT(gptconf)
+    model, arch = make_model_from_config(model_args)
     print(model)
 
     weights = tree_map(lambda p: p.astype(getattr(mx, d_type)), model.parameters())
@@ -155,7 +169,7 @@ def main():
                 )
         accumulated_loss = 0.0
         for micro_step in range(gradient_accumulation_steps):
-            loss, grads = loss_and_grad_fn(model, X, Y)
+            loss, grads = loss_and_grad_fn(model, inputs, targets)
 
             accumulated_grads = tree_map(
                 lambda acc, new: acc + new * (1.0 / gradient_accumulation_steps),

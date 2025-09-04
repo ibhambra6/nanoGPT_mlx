@@ -119,6 +119,25 @@ plt.ylabel('Perplexity')
 plt.show()
 ```
 
+#### Managing benchmark rows (delete from CSV)
+
+You can delete rows directly from the CSV via the benchmark script:
+
+```bash
+# Show recent history
+python scripts/benchmark_report.py --show_history
+
+# Delete by 1-based indices (from the CSV, excluding header)
+python scripts/benchmark_report.py --delete_indices 3 5 7
+
+# Delete where a field contains a substring (case-insensitive)
+# Supported fields include: model_name, commit, model_path, notes, etc.
+python scripts/benchmark_report.py --delete_where model_name=baseline
+python scripts/benchmark_report.py --delete_where notes="test run"
+```
+
+Deleted rows will not appear in subsequent comparisons or history views.
+
 ## Benchmark Protocol
 
 Following the plan in `docs/plan.md`, the recommended benchmarking protocol is:

@@ -1,0 +1,9 @@
+timestamp,commit,model_name,params_m,ctx_train,ctx_eval,ppl_eval,instruct_quality,tok_per_sec,eval_time_sec,model_path,notes
+2025-08-24T16:54:44.958662,1ae6cc7,baseline,49.35,256,256,64438.359,,1741.4,1.0,gpt2_shakespeare_pretrain/gpt2_shakespeare_pretrain.npz,
+2025-08-31T17:00:41.751964,fecc831,base_fa,49.35,256,256,58345.008,,1659.6,0.6,trained_models/base_fa/trained_models.npz,
+2025-09-04T09:23:26.881472,fecc831,base_fa_rms_rope,49.35,256,256,59143.321,,1749.7,0.6,trained_models/base_fa_rms_rope/trained_models.npz,
+2025-09-04T14:07:11.036725,fecc831,base_fa_rms_rope,49.35,256,256,54715.736,,2075.8,1.5,trained_models/base_fa_rms_rope/trained_models.npz,
+2025-09-04T14:09:35.564484,fecc831,base_fa_rms_rope,49.35,256,256,54715.730,,1458.6,0.9,trained_models/base_fa_rms_rope/trained_models.npz,
+2025-09-04T14:15:22.815847,fecc831,base_fa_rms_rope,49.35,256,256,54715.736,,2212.3,0.8,trained_models/base_fa_rms_rope/trained_models.npz,
+2025-09-04T14:15:53.614344,fecc831,base_fa_rms_rope,49.35,256,256,54715.736,,2881.7,0.8,trained_models/base_fa_rms_rope/trained_models.npz,
+2025-09-04T14:17:07.310996,fecc831,base_fa_rms_rope,49.35,256,256,54715.730,,2463.5,0.6,trained_models/base_fa_rms_rope/trained_models.npz,

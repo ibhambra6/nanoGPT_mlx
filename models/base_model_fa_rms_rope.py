@@ -1,12 +1,9 @@
-import math
-
 import mlx.core as mx
 import mlx.nn as nn
+import mlx.core.fast as fast
 
 from dataclasses import dataclass
-from .components import LayerNorm, topk as components_topk
-
-import pdb
+from .components import topk as components_topk
 
 
 class CausalSelfAttention(nn.Module):
@@ -49,6 +46,17 @@ class CausalSelfAttention(nn.Module):
         self.n_head = config.n_head
         self.n_embd = config.n_embd
         self.dropout = config.dropout
+        
+        # RoPE (Rotary Positional Encoding)
+        self.head_dim = config.n_embd // config.n_head
+        rope_base = getattr(config, 'rope_base', 10000.0)
+        rope_scale = getattr(config, 'rope_scale', 1.0)
+        self.rope = nn.RoPE(
+            dims=self.head_dim,
+            traditional=False,  # Use efficient implementation
+            base=rope_base,
+            scale=rope_scale
+        )
 
     def __call__(self, x, mask, cache=None):
         B, T, C = x.shape # batch size, sequence length, embedding dimensionality (n_embd)
@@ -59,20 +67,56 @@ class CausalSelfAttention(nn.Module):
         query = query.reshape(B, T, self.n_head, C // self.n_head).transpose(0, 2, 1, 3) # (B, nh, T, hs)
         value = value.reshape(B, T, self.n_head, C // self.n_head).transpose(0, 2, 1, 3) # (B, nh, T, hs)
 
+        # Apply RoPE to query and key
+        # RoPE expects input in shape (batch, sequence, heads, head_dim), so we need to transpose
+        query = query.transpose(0, 2, 1, 3)  # (B, T, nh, hs)
+        key = key.transpose(0, 2, 1, 3)      # (B, T, nh, hs)
+        
+        if cache is not None:
+            # For cached generation, we need to handle the offset
+            offset = cache[0].shape[2] if cache[0] is not None else 0
+            query = self.rope(query, offset=offset)
+            key = self.rope(key, offset=offset)
+        else:
+            query = self.rope(query)
+            key = self.rope(key)
+        
+        # Transpose back to (B, nh, T, hs) for attention computation
+        query = query.transpose(0, 2, 1, 3)
+        key = key.transpose(0, 2, 1, 3)
+
         if cache is not None:
             key_cache, value_cache = cache
             key = mx.concatenate([key_cache, key], axis=2)
             value = mx.concatenate([value_cache, value], axis=2)
 
-        # manual implementation of attention
-        att = (query @ key.transpose(0, 1, 3, 2)) * (1.0 / math.sqrt(key.shape[3]))
-        mask = mask.reshape(1, 1, T, T)
-        # Mask out future positions (set masked positions to -inf)
-        att = mx.where(mask[:, :, :T, :T] == 0, float('-inf'), att)
-        # y = att @ value # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
-        att = mx.softmax(att.astype(mx.float32), axis=-1).astype(att.dtype)
-        att = self.attn_dropout(att)
-        y = (att @ value).transpose(0, 2, 1, 3).reshape(B, T, C) # re-assemble all head outputs side by side
+        # Flash attention implementation using MLX's scaled_dot_product_attention
+        # Convert mask to the format expected by scaled_dot_product_attention
+        # MLX expects causal mask as additive mask (0 for allowed, -inf for masked)
+        current_seq_len = query.shape[2]  # T dimension
+        if cache is not None:
+            # When using cache, we need to handle the full sequence length
+            full_seq_len = key.shape[2]  # Full sequence length including cached tokens
+            causal_mask = mx.tril(mx.ones([current_seq_len, full_seq_len]))
+        else:
+            causal_mask = mx.tril(mx.ones([current_seq_len, current_seq_len]))
+        
+        # Convert to additive mask (0 for allowed, -inf for masked)
+        causal_mask = mx.where(causal_mask == 0, float('-inf'), 0.0)
+        
+        # Use MLX flash attention
+        # MLX scaled_dot_product_attention expects scale parameter and mask parameter
+        scale = 1.0 / (key.shape[-1] ** 0.5)  # 1/sqrt(head_dim)
+        y = fast.scaled_dot_product_attention(
+            query, 
+            key, 
+            value,
+            scale=scale,
+            mask=causal_mask
+        )
+        
+        # Re-assemble all head outputs side by side
+        y = y.transpose(0, 2, 1, 3).reshape(B, T, C)
 
         # output projection
         y = self.resid_dropout(self.c_proj(y))
@@ -133,24 +177,24 @@ class Block(nn.Module):
                 specifying the hyperparameters for the block.
 
         Attributes:
-            ln_1 (LayerNorm): Layer normalization for the first sub-block.
+            ln_1 (RMSNorm): RMS normalization for the first sub-block.
             attn (CausalSelfAttention): Causal Self-Attention sub-block.
-            ln_2 (LayerNorm): Layer normalization for the second sub-block.
+            ln_2 (RMSNorm): RMS normalization for the second sub-block.
             mlp (MLP): Multi-Layer Perceptron sub-block.
 
         Notes:
             - Ensure that the `config` parameter is an instance of `BlockConfig`.
             - The configuration class should contain the necessary hyperparameters for
               configuring the block.
-            - The `ln_1` layer performs layer normalization for the first sub-block.
+            - The `ln_1` layer performs RMS normalization for the first sub-block.
             - The `attn` layer represents the Causal Self-Attention sub-block.
-            - The `ln_2` layer performs layer normalization for the second sub-block.
+            - The `ln_2` layer performs RMS normalization for the second sub-block.
             - The `mlp` layer represents the Multi-Layer Perceptron sub-block.
         """
         super().__init__()
-        self.ln_1 = LayerNorm(config.n_embd, bias=config.bias)
+        self.ln_1 = nn.RMSNorm(config.n_embd, eps=1e-5)
         self.attn = CausalSelfAttention(config)
-        self.ln_2 = LayerNorm(config.n_embd, bias=config.bias)
+        self.ln_2 = nn.RMSNorm(config.n_embd, eps=1e-5)
         self.mlp = MLP(config)
 
     def __call__(self, x, mask, cache=None):
@@ -168,7 +212,10 @@ class GPTConfig:
     n_head: int = 12
     n_embd: int = 768
     dropout: float = 0.0
-    bias: bool = True # True: bias in Linears and LayerNorms, like GPT-2. False: a bit better and faster
+    bias: bool = True # True: bias in Linears, like GPT-2. False: a bit better and faster (RMSNorm doesn't use bias)
+    # RoPE parameters
+    rope_base: float = 10000.0  # Base for RoPE frequency computation
+    rope_scale: float = 1.0     # Scale factor for RoPE
 
 
 class GPT(nn.Module):
@@ -182,9 +229,13 @@ class GPT(nn.Module):
 
         Attributes:
             config (GPTConfig): Configuration instance containing model hyperparameters.
-            embedding (nn.Embedding): Embedding layer for input tokens.
-            transformer (List[Block]): List of transformer blocks.
+            wte (nn.Embedding): Token embedding layer for input tokens.
+            transformer (List[Block]): List of transformer blocks with RoPE and RMSNorm.
             out_proj (nn.Linear): Linear layer for output projection.
+            
+        Note:
+            This model uses RoPE (Rotary Positional Encoding) instead of learned 
+            positional embeddings, providing better extrapolation to longer sequences.
         """
         super().__init__()
 
@@ -193,10 +244,10 @@ class GPT(nn.Module):
         self.config = config
 
         self.wte = nn.Embedding(config.vocab_size, config.n_embd)
-        self.wpe = nn.Embedding(config.block_size, config.n_embd)
+        # No positional embeddings needed with RoPE
         self.drop = nn.Dropout(config.dropout)
         self.transformer = [Block(config) for _ in range(config.n_layer)]
-        self.ln_f = LayerNorm(config.n_embd, bias=config.bias)
+        self.ln_f = nn.RMSNorm(config.n_embd, eps=1e-5)
         self.out_proj = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
     def _sample_next_token(self, x, temperature):
@@ -247,11 +298,11 @@ class GPT(nn.Module):
         return idx
 
     def _forward_transformer(
-        self, x: mx.array, pos: mx.array, mask=None, cache=None, build_cache=False
+        self, x: mx.array, mask=None, cache=None, build_cache=False
     ):
+        # Only token embeddings, no positional embeddings (RoPE handles positions)
         tok_emb = self.wte(x)
-        pos_emb = self.wpe(pos)
-        x = self.drop(tok_emb + pos_emb)
+        x = self.drop(tok_emb)
         kv_cache = []
 
         if cache is not None:
@@ -271,10 +322,9 @@ class GPT(nn.Module):
         assert (
             t <= self.config.block_size
         ), f"Cannot forward sequence of length {t}, block size is only {self.config.block_size}"
-        pos = mx.arange(0, t, 1, dtype=x.dtype)
         mask = CausalSelfAttention.create_additive_causal_mask(x.shape[1])
 
-        x, _ = self._forward_transformer(x, pos, mask=mask)
+        x, _ = self._forward_transformer(x, mask=mask)
         return self.out_proj(x)
         
 

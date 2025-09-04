@@ -1,1 +1,61 @@
-# Models package
+"""Model factory utilities for nanoGPT_mlx.
+
+Provides helpers to instantiate the correct GPT variant based on a saved config
+and load weights from disk.
+"""
+
+import os
+import json
+from typing import Tuple, Dict, Any
+
+import mlx.core as mx
+from mlx.utils import tree_unflatten
+
+
+def select_arch_from_config(config: Dict[str, Any]) -> str:
+    """Pick model architecture based on config fields.
+
+    - If RoPE fields are present -> fa_rms_rope
+    - Else default to flash-attention variant
+    """
+    if config.get('use_rmt'):
+        return 'fa_rms_rope_swiglu_rmt'
+    if 'rope_base' in config or 'rope_scale' in config:
+        return 'fa_rms_rope'
+    return 'fa'
+
+
+def make_model_from_config(config: Dict[str, Any]):
+    """Instantiate a GPT model matching the config.
+
+    Returns the model and the resolved arch string.
+    """
+    arch = select_arch_from_config(config)
+    if arch == 'fa_rms_rope_swiglu_rmt':
+        from .base_model_fa_rms_rope_swiglu_rmt import GPT, GPTConfig
+    elif arch == 'fa_rms_rope':
+        from .base_model_fa_rms_rope import GPT, GPTConfig
+    elif arch == 'fa':
+        from .base_model_fa import GPT, GPTConfig
+    else:
+        from .base_model import GPT, GPTConfig
+
+    gpt_config = GPTConfig(**config)
+    model = GPT(gpt_config)
+    return model, arch
+
+
+def load_model_from_files(model_path: str, config_path: str):
+    """Load a trained model by auto-selecting the correct variant.
+
+    Returns (model, arch).
+    """
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+
+    model, arch = make_model_from_config(config)
+
+    weights = mx.load(model_path)
+    model.update(tree_unflatten(list(weights.items())))
+    mx.eval(model.parameters())
+    return model, arch
