@@ -2,3 +2,4 @@ timestamp,commit,model_name,params_m,ctx_train,ctx_eval,ppl_eval,instruct_qualit
 2025-09-04T14:34:56.115778,fecc831,base,49.35,256,256,65483.602,0.960,2443.6,1.6,trained_models/base/gpt2_shakespeare_pretrain/gpt2_shakespeare_pretrain.npz,
 2025-09-04T14:35:34.914932,fecc831,base_fa,49.35,256,256,59931.229,,2776.8,1.6,trained_models/base_fa/trained_models.npz,
 2025-09-04T14:36:19.879833,fecc831,base_fa_rms_rope,49.35,256,256,54406.068,,2966.8,1.6,trained_models/base_fa_rms_rope/trained_models.npz,
+2025-09-06T10:45:51.538439,a352597,base_fa_rms_rope_swiglu_rmt,23.11,256,256,51000.550,,1468.1,7.0,trained_models/base_fa_rms_rope_swiglu_rmt/trained_models.npz,
