@@ -1,5 +1,5 @@
-# Train a miniature Shakespeare model using the full-featured RMT variant
-# Features: Flash Attention, RMSNorm, RoPE, SwiGLU activation, and RMT architecture
+# Train a miniature Shakespeare model using the full-featured RMT variant with Grouped Query Attention (GQA)
+# Features: Flash Attention, RMSNorm, RoPE, SwiGLU activation, RMT architecture, and Grouped Query Attention
 
 # Output and data
 out_dir = 'trained_models'
@@ -21,7 +21,8 @@ beta2 = 0.99  # make a bit bigger because number of tokens per iter is small
 
 # Model size (token embedding dims used to form RMT input)
 n_layer = 6
-n_head = 8  # RMT heads (should be even for better performance)
+n_head = 8      # Number of query heads
+n_kv_head = 4   # Number of key/value heads (GQA: n_head > n_kv_head)
 n_embd = 384
 dropout = 0.2
 bias = False  # False is better with RMSNorm
@@ -41,3 +42,8 @@ save_interval = 1000
 eval_interval = 250  # keep frequent because we'll overfit
 eval_iters = 200
 log_interval = 10  # don't print too often
+
+# GQA-specific notes:
+# - n_head=8, n_kv_head=4 means each K/V head is shared by 2 Q heads
+# - This reduces memory usage for K/V caches while maintaining model capacity
+# - For more aggressive memory savings, try n_kv_head=2 or n_kv_head=1 (MQA)

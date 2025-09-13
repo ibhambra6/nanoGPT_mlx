@@ -15,10 +15,25 @@ from mlx.utils import tree_unflatten
 def select_arch_from_config(config: Dict[str, Any]) -> str:
     """Pick model architecture based on config fields.
 
+    - If RMT + GQA + Stabilization -> fa_rms_rope_swiglu_rmt_gqa_stab
+    - If RMT + GQA fields are present -> fa_rms_rope_swiglu_rmt_gqa
+    - If RMT fields are present -> fa_rms_rope_swiglu_rmt
     - If RoPE fields are present -> fa_rms_rope
     - Else default to flash-attention variant
     """
     if config.get('use_rmt'):
+        # Check if GQA is configured (n_kv_head different from n_head)
+        n_head = config.get('n_head')
+        n_kv_head = config.get('n_kv_head')
+        if n_kv_head is not None and n_kv_head != n_head:
+            # Check for stabilization features
+            stabilization_features = [
+                'parallel_residual', 'residual_alpha_learnable', 'qk_norm',
+                'attention_softcap', 'talking_heads', 'weight_tying'
+            ]
+            if any(config.get(feature) for feature in stabilization_features):
+                return 'fa_rms_rope_swiglu_rmt_gqa_stab'
+            return 'fa_rms_rope_swiglu_rmt_gqa'
         return 'fa_rms_rope_swiglu_rmt'
     if 'rope_base' in config or 'rope_scale' in config:
         return 'fa_rms_rope'
@@ -31,7 +46,11 @@ def make_model_from_config(config: Dict[str, Any]):
     Returns the model and the resolved arch string.
     """
     arch = select_arch_from_config(config)
-    if arch == 'fa_rms_rope_swiglu_rmt':
+    if arch == 'fa_rms_rope_swiglu_rmt_gqa_stab':
+        from .base_model_fa_rms_rope_swiglu_rmt_gqa_stab import GPT, GPTConfig
+    elif arch == 'fa_rms_rope_swiglu_rmt_gqa':
+        from .base_model_fa_rms_rope_swiglu_rmt_gqa import GPT, GPTConfig
+    elif arch == 'fa_rms_rope_swiglu_rmt':
         from .base_model_fa_rms_rope_swiglu_rmt import GPT, GPTConfig
     elif arch == 'fa_rms_rope':
         from .base_model_fa_rms_rope import GPT, GPTConfig

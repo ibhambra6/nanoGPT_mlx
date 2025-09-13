@@ -81,7 +81,29 @@ class InstructionEvaluator:
         )
         
         # Decode full sequence and extract response
-        full_text = self.enc.decode(generated[0].tolist())
+        # Filter out invalid token IDs to prevent tiktoken panic
+        generated_tokens = generated[0].tolist()
+        
+        # Clip tokens to valid vocabulary range [0, n_vocab)
+        valid_tokens = []
+        for token in generated_tokens:
+            if 0 <= token < self.enc.n_vocab:
+                valid_tokens.append(token)
+            else:
+                # Replace invalid tokens with unknown token (if exists) or skip
+                # For GPT-2, token 0 is typically safe
+                valid_tokens.append(0)
+        
+        try:
+            full_text = self.enc.decode(valid_tokens)
+        except Exception as e:
+            print(f"Warning: Failed to decode tokens, using fallback: {e}")
+            # Fallback: try to decode just the prompt part
+            try:
+                prompt_tokens = self.enc.encode(prompt)
+                full_text = self.enc.decode(prompt_tokens) + " [generation failed]"
+            except:
+                full_text = prompt + " [generation failed]"
         
         # Extract just the generated part (after the prompt)
         response = full_text[len(prompt):]
