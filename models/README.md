@@ -256,6 +256,83 @@ When to use:
 - Prefer matrix residual updates and SwiGLU MLPs
 - Training new models with modern stack: Flash Attention + RoPE + RMSNorm + SwiGLU
 
+### 5. `base_model_fa_rms_rope_swiglu_rmt_gqa.py` - RMT + Flash Attention + RMSNorm + RoPE + SwiGLU + GQA
+
+Extends the RMT variant with Grouped Query Attention (GQA) in both the vector and matrix attention paths. Queries use `n_head` while keys/values use `n_kv_head` (supports GQA and MQA when `n_kv_head=1`). Uses RoPE over head dimensions, Flash Attention kernels, and maintains KV caches with reduced memory via grouped KV heads.
+
+Key components and differences:
+- Grouped Query Attention: separate `wq`, `wk`, `wv` where `n_head` can be a multiple of `n_kv_head`.
+- GQA in RMT: `read_q` heads can exceed `read_k`/`read_v` heads; MLX SDPA handles grouping.
+- RoPE over Q/K with cache offset support for autoregressive generation.
+- Additive causal masks compatible with MLX `fast.scaled_dot_product_attention`.
+- Config adds `n_kv_head` and validates `n_head % n_kv_head == 0`.
+
+When to use:
+- You want RMT benefits plus lower KV cache memory and faster inference through GQA/MQA.
+- Ablate quality vs. memory by sweeping `n_kv_head ∈ {n_head, n_head/2, 1}`.
+
+### 6. `base_model_fa_rms_rope_swiglu_rmt_gqa_stab.py` - GQA Variant with Stabilization Features
+
+Builds on the GQA model with small‑data‑friendly stabilization and expressivity improvements while keeping parameter count nearly unchanged.
+
+Added features:
+- Parallel residual: attention and MLP computed in parallel from a shared RMSNorm and summed into the residual.
+- Residual alpha: learnable or fixed scaling per branch; default init `~1/√(2L)` from depth.
+- QK normalization: per‑head RMSNorm for Q/K with optional learnable scale to tame attention logits.
+- Attention softcap: optional tanh softcap on attention logits to avoid extreme values at long context.
+- Talking‑heads: lightweight linear mixing across heads pre/post attention to encourage head interaction.
+- Bias‑free linears: `bias=False` by default for cleaner optimization with RMSNorm.
+- Weight tying and logit scale: tie input/output embeddings and optionally scale final logits; optional z‑loss helper.
+
+When to use:
+- Training on small corpora (e.g., Shakespeare) where stability and calibration matter more than added params.
+- Ablate each toggle (qk_norm, softcap, talking_heads, parallel_residual) to measure impact.
+
+### 7. `base_model_fa_rms_rope_swiglu_rmt_gqa_stab_long.py` - Stabilized + Long‑Context Features
+
+Extends the stabilized GQA model with long‑context readiness and memory‑efficiency options.
+
+Added features (in addition to Model 6):
+- LongContextRoPE: NTK/YaRN/linear RoPE scaling modes plus partial‑RoPE (apply RoPE to a fraction of head dims).
+- Attention sinks: first N sink tokens always visible to stabilize decoding over long sequences.
+- Local window attention: optional sliding‑window attention in selected layers; other layers keep full attention.
+- KV efficiency: KV cache dtype control (`float32`/`float16`/`int8`) and optional paged‑KV flag; cache offset aware.
+- RMT refresh + compression: periodic refresh via lightweight low‑rank or pass‑through compressor to bound state growth.
+
+Config highlights:
+- `rope_scale_mode={'linear','ntk','yarn'}`, `rope_partial_factor∈(0,1]`
+- `attention_sink_tokens`, `local_window_size`, `local_window_layers`
+- `kv_cache_dtype`, `use_paged_kv`
+- `rmt_refresh_interval`, `rmt_compress_factor`
+
+When to use:
+- Evaluating throughput/memory vs. quality for longer contexts on Apple Silicon.
+- Side‑by‑side with Model 5/6 to quantify benefits of long‑context scaling without changing core params.
+
+### 8. `base_model_fa_rms_rope_swiglu_rmt_gqa_stab_long_moe.py` - Stabilized + Long‑Context + MoE‑lite
+
+Extends the stabilized long‑context model with a tiny Mixture‑of‑Experts (MoE) FFN in selected layers. Designed for small‑data settings: few experts, top‑2 routing, a shared expert for stability, and strong expert dropout. Keeps core attention stack unchanged (FA + RoPE + RMSNorm + GQA) and retains long‑context features (sinks, local windows, KV controls, RMT refresh/compression).
+
+Added features (in addition to Model 7):
+- MoE FFN (top‑2): Replace standard SwiGLU FFN with a routed expert MLP in a subset of layers.
+- Few experts + shared expert: Small `num_experts` (e.g., 4–8) and an always‑available shared expert to stabilize routing.
+- Capacity factor: Token‑to‑expert capacity bound with overflow handling to keep compute predictable.
+- Router regularization: Auxiliary load‑balancing loss, optional router noise, and optional router z‑loss for calibration.
+- Sparse placement: Apply MoE only to late or every‑k layers to avoid overfitting on tiny corpora.
+
+Config highlights:
+- `ffn_type={'swiglu','moe_top2'}` – choose FFN per model or per layer.
+- `moe_layers`: list of layer indices (or stride rule) to enable MoE.
+- `num_experts`, `top_k=2`, `capacity_factor`, `expert_dropout`, `router_noise`.
+- `aux_loss_weight` (load‑balancing), `router_z_loss_weight`, `shared_expert=True/False`.
+- Works alongside: `rope_scale_mode`, `rope_partial_factor`, `attention_sink_tokens`, `local_window_size`, `kv_cache_dtype`, `rmt_refresh_interval`, `rmt_compress_factor`.
+
+When to use:
+- You want to probe expert specialization benefits at tiny scale without large parameter growth.
+- You need a controlled MoE baseline with strong regularization on small datasets (e.g., Shakespeare).
+- You want to compare dense vs. sparse FFNs while holding attention and long‑context features constant.
+- You plan to scale to more data later but want MoE interfaces and metrics in place now.
+
 ### Flash Attention Model (`base_model_fa.py`):
 ```python
 from models.base_model_fa import GPT, GPTConfig
@@ -325,6 +402,30 @@ generated = model.generate(
 - You prefer SwiGLU MLPs and RoPE over `Dv` with Flash Attention
 - You aim for robust long-context training with a modern stack
 
+### Use `base_model_fa_rms_rope_swiglu_rmt_gqa.py` when:
+- You want RMT with GQA/MQA to reduce KV cache memory and speed up inference
+- You plan to sweep `n_kv_head` to study memory/quality tradeoffs
+- You want a modern baseline (FA + RMSNorm + RoPE + SwiGLU) with grouped KV heads
+- You need a strong, efficient default for small-data long-context experiments
+
+### Use `base_model_fa_rms_rope_swiglu_rmt_gqa_stab.py` when:
+- You train on tiny corpora (e.g., Shakespeare) and want extra stability without adding params
+- You want parallel residuals, QK normalization, and attention softcap/talking-heads toggles
+- You prefer bias-free linears and embedding–logit weight tying with optional logit scaling
+- You want a calibrated, robust everyday baseline for ablations
+
+### Use `base_model_fa_rms_rope_swiglu_rmt_gqa_stab_long.py` when:
+- You evaluate longer contexts and need NTK/YaRN/partial‑RoPE scaling options
+- You want attention sinks and optional local window layers for throughput
+- You need KV cache dtype control (`float32`/`float16`/`int8`) or paged‑KV
+- You want periodic RMT refresh/compression to bound memory growth
+
+### Use `base_model_fa_rms_rope_swiglu_rmt_gqa_stab_long_moe.py` when:
+- You want a tiny, regularized MoE FFN to test expert routing benefits
+- You prefer sparse FFNs in late or every‑k layers while keeping attention identical
+- You need auxiliary load‑balancing and router calibration losses for stability on small data
+- You want MoE hooks ready for future scaling without changing the attention stack
+
 ## Configuration Notes
 
 - **Vocabulary Size**: Default 50304 is GPT-2's vocabulary (50257) padded to the nearest multiple of 64 for computational efficiency
@@ -351,6 +452,3 @@ generated = model.generate(
 All three models are designed to be drop-in replacements for each other, with the flash attention versions providing performance benefits for longer sequences, and the RMSNorm + RoPE version offering the most modern architecture with enhanced training stability and length extrapolation capabilities.
 
 The RMT variant extends this with a matrix residual stream, allowing capacity scaling through `Dk` while keeping `Dv` compact, and integrates neatly with Flash Attention, RoPE, RMSNorm, and SwiGLU for strong performance and stability on Apple Silicon via MLX.
-
-
-

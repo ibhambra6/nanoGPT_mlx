@@ -4,3 +4,5 @@
 2025-09-12T11:57:34.304699,9e52dc8,base_fa_rms_rope_swiglu_rmt,23.11,256,256,67.721,0.920,3756.5,1.8,trained_models/base_fa_rms_rope_swiglu_rmt/trained_models.npz,
 2025-09-12T15:38:20.015107,9e52dc8,base_fa_rms_rope_swiglu_rmt_gqa,23.11,256,256,65.547,0.960,3680.7,1.8,trained_models/base_fa_rms_rope_swiglu_rmt_gqa/trained_models.npz,
 2025-09-12T22:20:40.670700,9e52dc8,base_fa_rms_rope_swiglu_rmt_gqa_stab,23.11,256,256,63.941,0.940,3902.6,1.8,trained_models/base_fa_rms_rope_swiglu_rmt_gqa_stab/trained_models.npz,
+2025-09-15T12:51:02.882391,014133f,base_fa_rms_rope_swiglu_rmt_gqa_stab_long,23.11,512,512,50.455,0.960,3397.8,1.8,trained_models/base_fa_rms_rope_swiglu_rmt_gqa_stab_long/trained_models.npz,
+2025-09-15T21:26:30.408873,014133f,base_fa_rms_rope_swiglu_rmt_gqa_stab_long_moe,23.23,512,512,45.305,0.960,2791.4,2.4,trained_models/base_fa_rms_rope_swiglu_rmt_gqa_stab_long_moe/trained_models.npz,

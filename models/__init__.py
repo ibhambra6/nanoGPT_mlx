@@ -15,6 +15,7 @@ from mlx.utils import tree_unflatten
 def select_arch_from_config(config: Dict[str, Any]) -> str:
     """Pick model architecture based on config fields.
 
+    - If RMT + GQA + Stabilization + Long-context -> fa_rms_rope_swiglu_rmt_gqa_stab_long
     - If RMT + GQA + Stabilization -> fa_rms_rope_swiglu_rmt_gqa_stab
     - If RMT + GQA fields are present -> fa_rms_rope_swiglu_rmt_gqa
     - If RMT fields are present -> fa_rms_rope_swiglu_rmt
@@ -31,7 +32,25 @@ def select_arch_from_config(config: Dict[str, Any]) -> str:
                 'parallel_residual', 'residual_alpha_learnable', 'qk_norm',
                 'attention_softcap', 'talking_heads', 'weight_tying'
             ]
-            if any(config.get(feature) for feature in stabilization_features):
+            # Check for long-context features
+            long_context_features = [
+                'rope_scale_mode', 'rope_partial_factor', 'attention_sink_tokens',
+                'local_window_size', 'rmt_refresh_interval', 'rmt_compress_factor'
+            ]
+            # Check for MoE features
+            moe_features = [
+                'moe_layers', 'moe_n_experts', 'per_head_scaling', 'drop_path_rate'
+            ]
+            
+            has_stabilization = any(config.get(feature) for feature in stabilization_features)
+            has_long_context = any(config.get(feature) is not None for feature in long_context_features)
+            has_moe = any(config.get(feature) is not None for feature in moe_features)
+            
+            if has_stabilization and has_long_context and has_moe:
+                return 'fa_rms_rope_swiglu_rmt_gqa_stab_long_moe'
+            elif has_stabilization and has_long_context:
+                return 'fa_rms_rope_swiglu_rmt_gqa_stab_long'
+            elif has_stabilization:
                 return 'fa_rms_rope_swiglu_rmt_gqa_stab'
             return 'fa_rms_rope_swiglu_rmt_gqa'
         return 'fa_rms_rope_swiglu_rmt'
@@ -46,7 +65,11 @@ def make_model_from_config(config: Dict[str, Any]):
     Returns the model and the resolved arch string.
     """
     arch = select_arch_from_config(config)
-    if arch == 'fa_rms_rope_swiglu_rmt_gqa_stab':
+    if arch == 'fa_rms_rope_swiglu_rmt_gqa_stab_long_moe':
+        from .base_model_fa_rms_rope_swiglu_rmt_gqa_stab_long_moe import GPT, GPTConfig
+    elif arch == 'fa_rms_rope_swiglu_rmt_gqa_stab_long':
+        from .base_model_fa_rms_rope_swiglu_rmt_gqa_stab_long import GPT, GPTConfig
+    elif arch == 'fa_rms_rope_swiglu_rmt_gqa_stab':
         from .base_model_fa_rms_rope_swiglu_rmt_gqa_stab import GPT, GPTConfig
     elif arch == 'fa_rms_rope_swiglu_rmt_gqa':
         from .base_model_fa_rms_rope_swiglu_rmt_gqa import GPT, GPTConfig
